@@ -172,7 +172,7 @@ cpet_file = st.sidebar.file_uploader("Carica CSV esportato da Metasoft", type=['
 if cpet_file:
     # Cerchiamo l'header
     try:
-        df_temp = pd.read_csv(cpet_file, skiprows=116)
+        df_temp = pd.read_csv(cpet_file)
         df_final = process_cpet(df_temp)
         metrics = extract_metrics(df_final)
         
