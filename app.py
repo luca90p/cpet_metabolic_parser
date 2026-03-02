@@ -16,17 +16,21 @@ st.set_page_config(page_title="CPET Telemetry Dashboard", layout="wide")
 def process_cpet(df_raw):
     df = df_raw.copy()
     
-    # Clean strings
-    for c in df.columns:
-        if df[c].dtype == 'object' and c not in ['t', 'Fase', 'Marker']:
-            df[c] = pd.to_numeric(df[c].astype(str).str.replace(',', '.', regex=False), errors='coerce')
-            
     # Standardize column names based on Metasoft output
     col_map = {'FC': 'HR', "V'O2": 'VO2', "V'CO2": 'VCO2', 'RER': 'RER', 'v': 'Speed', 
                'FAT': 'FAT', 'CHO': 'CHO', 'VT': 'VT', 'BF': 'BF', "V'O2/FC": 'O2Pulse'}
     
-    # Rename existing columns
+    # Rinomina le colonne
     df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+    
+    # ISOLA SOLO LE COLONNE NUMERICHE CHE CI SERVONO (Evita l'errore object/string)
+    keep_cols = [v for k, v in col_map.items() if v in df.columns]
+    df = df[keep_cols].copy()
+    
+    # Forza la conversione in numeri (sostituisce la virgola col punto)
+    for c in df.columns:
+        if df[c].dtype == 'object':
+            df[c] = pd.to_numeric(df[c].astype(str).str.replace(',', '.', regex=False), errors='coerce')
     
     # Filter exercise phase
     df = df.dropna(subset=['HR', 'Speed']).copy()
@@ -35,14 +39,16 @@ def process_cpet(df_raw):
     if df.empty:
         return None
 
-    # Binning (Round to nearest BPM)
+    # Binning (Round to nearest BPM) e media
     df['_bin'] = df['HR'].round()
-    df_binned = df.groupby('_bin', as_index=False).mean().drop(columns=['_bin'])
+    # Aggiunto numeric_only=True per sicurezza blindata
+    df_binned = df.groupby('_bin', as_index=False).mean(numeric_only=True)
+    if '_bin' in df_binned.columns:
+        df_binned = df_binned.drop(columns=['_bin'])
 
     # Smoothing (Rolling Mean)
     window = 15
-    numeric_cols = [c for c in df_binned.columns if pd.api.types.is_numeric_dtype(df_binned[c])]
-    for c in numeric_cols:
+    for c in df_binned.columns:
         df_binned[c] = df_binned[c].rolling(window=window, min_periods=1, center=True).mean()
 
     df_binned = df_binned.dropna(subset=['HR']).sort_values('HR').reset_index(drop=True)
@@ -53,9 +59,8 @@ def process_cpet(df_raw):
     new_hr = np.arange(min_hr, max_hr + 1.0, 1.0)
     
     new_data = {'HR': new_hr}
-    for col in numeric_cols:
+    for col in df_binned.columns:
         if col != 'HR':
-            # Interpolate only valid non-NaN data
             mask = ~df_binned[col].isna()
             if mask.sum() > 2:
                 new_data[col] = np.interp(new_hr, df_binned.loc[mask, 'HR'], df_binned.loc[mask, col])
