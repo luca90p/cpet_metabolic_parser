@@ -176,13 +176,17 @@ fc_max_reale = st.sidebar.number_input("FC Max Reale Conosciuta (bpm)", value=18
 
 if cpet_file:
     try:
-        # Assumiamo l'uso del file grezzo da cui abbiamo tolto l'header a mano
-        # o aggiungiamo un try-except per gestire lo skiprows
-        try:
-            df_temp = pd.read_csv(cpet_file, skiprows=116)
-        except:
-            cpet_file.seek(0)
+        # 1. Tentiamo di leggere la prima riga per vedere se è il file già pulito
+        df_test = pd.read_csv(cpet_file, nrows=2)
+        cpet_file.seek(0) # Riportiamo il puntatore del file a zero
+        
+        # 2. Controllo Intelligente dell'Header
+        if 'FC' in df_test.columns or 'HR' in df_test.columns:
+            # È il file già pulito o processato
             df_temp = pd.read_csv(cpet_file)
+        else:
+            # È il file grezzo uscito direttamente da Metasoft (saltiamo l'intestazione clinica)
+            df_temp = pd.read_csv(cpet_file, skiprows=116)
             
         df_final, df_raw_filtered = process_cpet(df_temp)
         metrics = extract_metrics(df_final)
